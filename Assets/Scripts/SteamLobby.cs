@@ -6,6 +6,8 @@ using Steamworks;
 using UnityEngine.UI;
 
 public class SteamLobby : MonoBehaviour {
+	public static SteamLobby instance;
+
 	protected Callback<LobbyCreated_t> LobbyCreated;
 	protected Callback<GameLobbyJoinRequested_t> JoinRequest;
 	protected Callback<LobbyEnter_t> LobbyEntered;
@@ -17,6 +19,14 @@ public class SteamLobby : MonoBehaviour {
 	public GameObject HostButton;
 	public Text LobbyNameText;
 
+	private void Awake() {
+		if (instance != null) {
+			Destroy(gameObject);
+			return;
+		}
+		instance = this;
+		DontDestroyOnLoad(gameObject);
+	}
 	private void Start() {
 		if (!SteamManager.Initialized) { return; }
 
@@ -25,8 +35,6 @@ public class SteamLobby : MonoBehaviour {
 		LobbyCreated = Callback<LobbyCreated_t>.Create(OnLobbyCreated);
 		JoinRequest = Callback<GameLobbyJoinRequested_t>.Create(OnJoinRequest);
 		LobbyEntered = Callback<LobbyEnter_t>.Create(OnLobbyEntered);
-
-
 	}
 
 	public void HostLobby() {
