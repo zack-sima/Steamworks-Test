@@ -8,268 +8,234 @@ using UnityEngine;
 // forked from https://github.com/in0finite/MirrorNetworkDiscovery
 // Both are MIT Licensed
 
-namespace Mirror.Discovery
-{
-    /// <summary>
-    /// Base implementation for Network Discovery.  Extend this component
-    /// to provide custom discovery with game specific data
-    /// <see cref="NetworkDiscovery">NetworkDiscovery</see> for a sample implementation
-    /// </summary>
-    [DisallowMultipleComponent]
-    [HelpURL("https://mirror-networking.gitbook.io/docs/components/network-discovery")]
-    public abstract class NetworkDiscoveryBase<Request, Response> : MonoBehaviour
-        where Request : NetworkMessage
-        where Response : NetworkMessage
-    {
-        public static bool SupportedOnThisPlatform { get { return Application.platform != RuntimePlatform.WebGLPlayer; } }
+namespace Mirror.Discovery {
+	/// <summary>
+	/// Base implementation for Network Discovery.  Extend this component
+	/// to provide custom discovery with game specific data
+	/// <see cref="NetworkDiscovery">NetworkDiscovery</see> for a sample implementation
+	/// </summary>
+	[DisallowMultipleComponent]
+	[HelpURL("https://mirror-networking.gitbook.io/docs/components/network-discovery")]
+	public abstract class NetworkDiscoveryBase<Request, Response> : MonoBehaviour
+		where Request : NetworkMessage
+		where Response : NetworkMessage {
+		public static bool SupportedOnThisPlatform { get { return Application.platform != RuntimePlatform.WebGLPlayer; } }
 
-        [SerializeField]
-        [Tooltip("If true, broadcasts a discovery request every ActiveDiscoveryInterval seconds")]
-        public bool enableActiveDiscovery = true;
+		[SerializeField]
+		[Tooltip("If true, broadcasts a discovery request every ActiveDiscoveryInterval seconds")]
+		public bool enableActiveDiscovery = true;
 
-        // broadcast address needs to be configurable on iOS:
-        // https://github.com/vis2k/Mirror/pull/3255
-        [Tooltip("iOS may require LAN IP address here (e.g. 192.168.x.x), otherwise leave blank.")]
-        public string BroadcastAddress = "";
+		// broadcast address needs to be configurable on iOS:
+		// https://github.com/vis2k/Mirror/pull/3255
+		[Tooltip("iOS may require LAN IP address here (e.g. 192.168.x.x), otherwise leave blank.")]
+		public string BroadcastAddress = "";
 
-        [SerializeField]
-        [Tooltip("The UDP port the server will listen for multi-cast messages")]
-        protected int serverBroadcastListenPort = 47777;
+		[SerializeField]
+		[Tooltip("The UDP port the server will listen for multi-cast messages")]
+		protected int serverBroadcastListenPort = 47777;
 
-        [SerializeField]
-        [Tooltip("Time in seconds between multi-cast messages")]
-        [Range(1, 60)]
-        float ActiveDiscoveryInterval = 3;
+		[SerializeField]
+		[Tooltip("Time in seconds between multi-cast messages")]
+		[Range(1, 60)]
+		float ActiveDiscoveryInterval = 3;
 
-        [Tooltip("Transport to be advertised during discovery")]
-        public Transport transport;
+		[Tooltip("Transport to be advertised during discovery")]
+		public Transport transport;
 
-        [Tooltip("Invoked when a server is found")]
-        public ServerFoundUnityEvent<Response> OnServerFound;
+		[Tooltip("Invoked when a server is found")]
+		public ServerFoundUnityEvent<Response> OnServerFound;
 
-        // Each game should have a random unique handshake,
-        // this way you can tell if this is the same game or not
-        [HideInInspector]
-        public long secretHandshake;
+		// Each game should have a random unique handshake,
+		// this way you can tell if this is the same game or not
+		[HideInInspector]
+		public long secretHandshake;
 
-        public long ServerId { get; private set; }
+		public long ServerId { get; private set; }
 
-        protected UdpClient serverUdpClient;
-        protected UdpClient clientUdpClient;
+		protected UdpClient serverUdpClient;
+		protected UdpClient clientUdpClient;
 
 #if UNITY_EDITOR
-        public virtual void OnValidate()
-        {
-            if (transport == null)
-                transport = GetComponent<Transport>();
+		public virtual void OnValidate() {
+			if (transport == null)
+				transport = GetComponent<Transport>();
 
-            if (secretHandshake == 0)
-            {
-                secretHandshake = RandomLong();
-                UnityEditor.Undo.RecordObject(this, "Set secret handshake");
-            }
-        }
+			if (secretHandshake == 0) {
+				secretHandshake = RandomLong();
+				UnityEditor.Undo.RecordObject(this, "Set secret handshake");
+			}
+		}
 #endif
 
-        /// <summary>
-        /// virtual so that inheriting classes' Start() can call base.Start() too
-        /// </summary>
-        public virtual void Start()
-        {
-            ServerId = RandomLong();
+		/// <summary>
+		/// virtual so that inheriting classes' Start() can call base.Start() too
+		/// </summary>
+		public virtual void Start() {
+			ServerId = RandomLong();
 
-            // active transport gets initialized in Awake
-            // so make sure we set it here in Start() after Awake
-            // Or just let the user assign it in the inspector
-            if (transport == null)
-                transport = Transport.active;
+			// active transport gets initialized in Awake
+			// so make sure we set it here in Start() after Awake
+			// Or just let the user assign it in the inspector
+			if (transport == null)
+				transport = Transport.active;
 
-            // Server mode? then start advertising
-            if (Utils.IsHeadless())
-            {
-                AdvertiseServer();
-            }
-        }
+			// Server mode? then start advertising
+			if (Utils.IsHeadless()) {
+				AdvertiseServer();
+			}
+		}
 
-        public static long RandomLong()
-        {
-            int value1 = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
-            int value2 = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
-            return value1 + ((long)value2 << 32);
-        }
+		public static long RandomLong() {
+			int value1 = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+			int value2 = UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+			return value1 + ((long)value2 << 32);
+		}
 
-        // Ensure the ports are cleared no matter when Game/Unity UI exits
-        void OnApplicationQuit()
-        {
-            //Debug.Log("NetworkDiscoveryBase OnApplicationQuit");
-            Shutdown();
-        }
+		// Ensure the ports are cleared no matter when Game/Unity UI exits
+		void OnApplicationQuit() {
+			//Debug.Log("NetworkDiscoveryBase OnApplicationQuit");
+			Shutdown();
+		}
 
-        void OnDisable()
-        {
-            //Debug.Log("NetworkDiscoveryBase OnDisable");
-            Shutdown();
-        }
+		void OnDisable() {
+			//Debug.Log("NetworkDiscoveryBase OnDisable");
+			Shutdown();
+		}
 
-        void OnDestroy()
-        {
-            //Debug.Log("NetworkDiscoveryBase OnDestroy");
-            Shutdown();
-        }
+		void OnDestroy() {
+			//Debug.Log("NetworkDiscoveryBase OnDestroy");
+			Shutdown();
+		}
 
-        void Shutdown()
-        {
-            EndpMulticastLock();
-            if (serverUdpClient != null)
-            {
-                try
-                {
-                    serverUdpClient.Close();
-                }
-                catch (Exception)
-                {
-                    // it is just close, swallow the error
-                }
+		void Shutdown() {
+			EndpMulticastLock();
+			if (serverUdpClient != null) {
+				try {
+					serverUdpClient.Close();
+				} catch (Exception) {
+					// it is just close, swallow the error
+				}
 
-                serverUdpClient = null;
-            }
+				serverUdpClient = null;
+			}
 
-            if (clientUdpClient != null)
-            {
-                try
-                {
-                    clientUdpClient.Close();
-                }
-                catch (Exception)
-                {
-                    // it is just close, swallow the error
-                }
+			if (clientUdpClient != null) {
+				try {
+					clientUdpClient.Close();
+				} catch (Exception) {
+					// it is just close, swallow the error
+				}
 
-                clientUdpClient = null;
-            }
+				clientUdpClient = null;
+			}
 
-            CancelInvoke();
-        }
+			CancelInvoke();
+		}
 
-        #region Server
+		#region Server
 
-        /// <summary>
-        /// Advertise this server in the local network
-        /// </summary>
-        public void AdvertiseServer()
-        {
-            if (!SupportedOnThisPlatform)
-                throw new PlatformNotSupportedException("Network discovery not supported in this platform");
+		/// <summary>
+		/// Advertise this server in the local network
+		/// </summary>
+		public void AdvertiseServer() {
+			Debug.Log("advertised!");
 
-            StopDiscovery();
+			if (!SupportedOnThisPlatform)
+				throw new PlatformNotSupportedException("Network discovery not supported in this platform");
 
-            // Setup port -- may throw exception
-            serverUdpClient = new UdpClient(serverBroadcastListenPort)
-            {
-                EnableBroadcast = true,
-                MulticastLoopback = false
-            };
+			StopDiscovery();
 
-            // listen for client pings
-            _ = ServerListenAsync();
-        }
+			// Setup port -- may throw exception
+			serverUdpClient = new UdpClient(serverBroadcastListenPort) {
+				EnableBroadcast = true,
+				MulticastLoopback = false
+			};
 
-        public async Task ServerListenAsync()
-        {
-            BeginMulticastLock();
-            while (true)
-            {
-                try
-                {
-                    await ReceiveRequestAsync(serverUdpClient);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // socket has been closed
-                    break;
-                }
-                catch (Exception) {}
-            }
-        }
+			// listen for client pings
+			_ = ServerListenAsync();
+		}
 
-        async Task ReceiveRequestAsync(UdpClient udpClient)
-        {
-            // only proceed if there is available data in network buffer, or otherwise Receive() will block
-            // average time for UdpClient.Available : 10 us
+		public async Task ServerListenAsync() {
+			BeginMulticastLock();
+			while (true) {
+				try {
+					await ReceiveRequestAsync(serverUdpClient);
+				} catch (ObjectDisposedException) {
+					// socket has been closed
+					break;
+				} catch (Exception) { }
+			}
+		}
 
-            UdpReceiveResult udpReceiveResult = await udpClient.ReceiveAsync();
+		async Task ReceiveRequestAsync(UdpClient udpClient) {
+			// only proceed if there is available data in network buffer, or otherwise Receive() will block
+			// average time for UdpClient.Available : 10 us
 
-            using (NetworkReaderPooled networkReader = NetworkReaderPool.Get(udpReceiveResult.Buffer))
-            {
-                long handshake = networkReader.ReadLong();
-                if (handshake != secretHandshake)
-                {
-                    // message is not for us
-                    throw new ProtocolViolationException("Invalid handshake");
-                }
+			UdpReceiveResult udpReceiveResult = await udpClient.ReceiveAsync();
 
-                Request request = networkReader.Read<Request>();
+			using (NetworkReaderPooled networkReader = NetworkReaderPool.Get(udpReceiveResult.Buffer)) {
+				long handshake = networkReader.ReadLong();
+				if (handshake != secretHandshake) {
+					// message is not for us
+					throw new ProtocolViolationException("Invalid handshake");
+				}
 
-                ProcessClientRequest(request, udpReceiveResult.RemoteEndPoint);
-            }
-        }
+				Request request = networkReader.Read<Request>();
 
-        /// <summary>
-        /// Reply to the client to inform it of this server
-        /// </summary>
-        /// <remarks>
-        /// Override if you wish to ignore server requests based on
-        /// custom criteria such as language, full server game mode or difficulty
-        /// </remarks>
-        /// <param name="request">Request coming from client</param>
-        /// <param name="endpoint">Address of the client that sent the request</param>
-        protected virtual void ProcessClientRequest(Request request, IPEndPoint endpoint)
-        {
-            Response info = ProcessRequest(request, endpoint);
+				ProcessClientRequest(request, udpReceiveResult.RemoteEndPoint);
+			}
+		}
 
-            if (info == null)
-                return;
+		/// <summary>
+		/// Reply to the client to inform it of this server
+		/// </summary>
+		/// <remarks>
+		/// Override if you wish to ignore server requests based on
+		/// custom criteria such as language, full server game mode or difficulty
+		/// </remarks>
+		/// <param name="request">Request coming from client</param>
+		/// <param name="endpoint">Address of the client that sent the request</param>
+		protected virtual void ProcessClientRequest(Request request, IPEndPoint endpoint) {
+			Response info = ProcessRequest(request, endpoint);
 
-            using (NetworkWriterPooled writer = NetworkWriterPool.Get())
-            {
-                try
-                {
-                    writer.WriteLong(secretHandshake);
+			if (info == null)
+				return;
 
-                    writer.Write(info);
+			using (NetworkWriterPooled writer = NetworkWriterPool.Get()) {
+				try {
+					writer.WriteLong(secretHandshake);
 
-                    ArraySegment<byte> data = writer.ToArraySegment();
-                    // signature matches
-                    // send response
-                    serverUdpClient.Send(data.Array, data.Count, endpoint);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogException(ex, this);
-                }
-            }
-        }
+					writer.Write(info);
 
-        /// <summary>
-        /// Process the request from a client
-        /// </summary>
-        /// <remarks>
-        /// Override if you wish to provide more information to the clients
-        /// such as the name of the host player
-        /// </remarks>
-        /// <param name="request">Request coming from client</param>
-        /// <param name="endpoint">Address of the client that sent the request</param>
-        /// <returns>The message to be sent back to the client or null</returns>
-        protected abstract Response ProcessRequest(Request request, IPEndPoint endpoint);
+					ArraySegment<byte> data = writer.ToArraySegment();
+					// signature matches
+					// send response
+					serverUdpClient.Send(data.Array, data.Count, endpoint);
+				} catch (Exception ex) {
+					Debug.LogException(ex, this);
+				}
+			}
+		}
 
-        // Android Multicast fix: https://github.com/vis2k/Mirror/pull/2887
+		/// <summary>
+		/// Process the request from a client
+		/// </summary>
+		/// <remarks>
+		/// Override if you wish to provide more information to the clients
+		/// such as the name of the host player
+		/// </remarks>
+		/// <param name="request">Request coming from client</param>
+		/// <param name="endpoint">Address of the client that sent the request</param>
+		/// <returns>The message to be sent back to the client or null</returns>
+		protected abstract Response ProcessRequest(Request request, IPEndPoint endpoint);
+
+		// Android Multicast fix: https://github.com/vis2k/Mirror/pull/2887
 #if UNITY_ANDROID
         AndroidJavaObject multicastLock;
         bool hasMulticastLock;
 #endif
 
-        void BeginMulticastLock()
-		{
+		void BeginMulticastLock() {
 #if UNITY_ANDROID
             if (hasMulticastLock) return;
 
@@ -286,185 +252,168 @@ namespace Mirror.Discovery
                 }
 			}
 #endif
-        }
+		}
 
-        void EndpMulticastLock()
-        {
+		void EndpMulticastLock() {
 #if UNITY_ANDROID
             if (!hasMulticastLock) return;
 
             multicastLock?.Call("release");
             hasMulticastLock = false;
 #endif
-        }
+		}
 
-#endregion
+		#endregion
 
-        #region Client
+		#region Client
 
-        /// <summary>
-        /// Start Active Discovery
-        /// </summary>
-        public void StartDiscovery()
-        {
-            if (!SupportedOnThisPlatform)
-                throw new PlatformNotSupportedException("Network discovery not supported in this platform");
+		/// <summary>
+		/// Start Active Discovery
+		/// </summary>
+		public void StartDiscovery() {
+			Debug.Log("Started discovery!");
 
-            StopDiscovery();
+			if (!SupportedOnThisPlatform)
+				throw new PlatformNotSupportedException("Network discovery not supported in this platform");
 
-            try
-            {
-                // Setup port
-                clientUdpClient = new UdpClient(0)
-                {
-                    EnableBroadcast = true,
-                    MulticastLoopback = false
-                };
-            }
-            catch (Exception)
-            {
-                // Free the port if we took it
-                //Debug.LogError("NetworkDiscoveryBase StartDiscovery Exception");
-                Shutdown();
-                throw;
-            }
+			StopDiscovery();
 
-            _ = ClientListenAsync();
+			try {
+				// Setup port
+				clientUdpClient = new UdpClient(0) {
+					EnableBroadcast = true,
+					MulticastLoopback = false
+				};
+			} catch (Exception) {
+				// Free the port if we took it
+				Debug.LogError("NetworkDiscoveryBase StartDiscovery Exception");
+				Shutdown();
+				throw;
+			}
 
-            if (enableActiveDiscovery) InvokeRepeating(nameof(BroadcastDiscoveryRequest), 0, ActiveDiscoveryInterval);
-        }
+			_ = ClientListenAsync();
 
-        /// <summary>
-        /// Stop Active Discovery
-        /// </summary>
-        public void StopDiscovery()
-        {
-            //Debug.Log("NetworkDiscoveryBase StopDiscovery");
-            Shutdown();
-        }
+			if (enableActiveDiscovery) InvokeRepeating(nameof(BroadcastDiscoveryRequest), 0, ActiveDiscoveryInterval);
+		}
 
-        /// <summary>
-        /// Awaits for server response
-        /// </summary>
-        /// <returns>ClientListenAsync Task</returns>
-        public async Task ClientListenAsync()
-        {
-            // while clientUpdClient to fix:
-            // https://github.com/vis2k/Mirror/pull/2908
-            //
-            // If, you cancel discovery the clientUdpClient is set to null.
-            // However, nothing cancels ClientListenAsync. If we change the if(true)
-            // to check if the client is null. You can properly cancel the discovery,
-            // and kill the listen thread.
-            //
-            // Prior to this fix, if you cancel the discovery search. It crashes the
-            // thread, and is super noisy in the output. As well as causes issues on
-            // the quest.
-            while (clientUdpClient != null)
-            {
-                try
-                {
-                    await ReceiveGameBroadcastAsync(clientUdpClient);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // socket was closed, no problem
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogException(ex);
-                }
-            }
-        }
+		/// <summary>
+		/// Stop Active Discovery
+		/// </summary>
+		public void StopDiscovery() {
+			//Debug.Log("NetworkDiscoveryBase StopDiscovery");
+			Shutdown();
+		}
 
-        /// <summary>
-        /// Sends discovery request from client
-        /// </summary>
-        public void BroadcastDiscoveryRequest()
-        {
-            if (clientUdpClient == null)
-                return;
+		/// <summary>
+		/// Awaits for server response
+		/// </summary>
+		/// <returns>ClientListenAsync Task</returns>
+		public async Task ClientListenAsync() {
+			// while clientUpdClient to fix:
+			// https://github.com/vis2k/Mirror/pull/2908
+			//
+			// If, you cancel discovery the clientUdpClient is set to null.
+			// However, nothing cancels ClientListenAsync. If we change the if(true)
+			// to check if the client is null. You can properly cancel the discovery,
+			// and kill the listen thread.
+			//
+			// Prior to this fix, if you cancel the discovery search. It crashes the
+			// thread, and is super noisy in the output. As well as causes issues on
+			// the quest.
+			while (clientUdpClient != null) {
+				try {
+					await ReceiveGameBroadcastAsync(clientUdpClient);
+				} catch (ObjectDisposedException) {
+					// socket was closed, no problem
+					return;
+				} catch (Exception ex) {
+					Debug.LogException(ex);
+				}
+			}
+		}
 
-            if (NetworkClient.isConnected)
-            {
-                StopDiscovery();
-                return;
-            }
+		/// <summary>
+		/// Sends discovery request from client
+		/// </summary>
+		public void BroadcastDiscoveryRequest() {
+			//Debug.Log(IPAddress.Broadcast.ToString());
+			if (clientUdpClient == null)
+				return;
 
-            IPEndPoint endPoint = new IPEndPoint(IPAddress.Broadcast, serverBroadcastListenPort);
+			if (NetworkClient.isConnected) {
+				StopDiscovery();
+				return;
+			}
+			//TODO: temporary fix from https://discussions.unity.com/t/mirror-networking-network-discovery-not-working-on-lan/241325/2
+			IPAddress newBroadcast = IPAddress.Broadcast;// IPAddress.Parse("192.168.0.255");
 
-            if (!string.IsNullOrWhiteSpace(BroadcastAddress))
-            {
-                try
-                {
-                    endPoint = new IPEndPoint(IPAddress.Parse(BroadcastAddress), serverBroadcastListenPort);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogException(ex);
-                }
-            }
+			Debug.Log(newBroadcast.ToString());
 
-            using (NetworkWriterPooled writer = NetworkWriterPool.Get())
-            {
-                writer.WriteLong(secretHandshake);
+			//default broadcast is IPAddress.Broadcast;
 
-                try
-                {
-                    Request request = GetRequest();
+			IPEndPoint endPoint = new IPEndPoint(newBroadcast, serverBroadcastListenPort);
 
-                    writer.Write(request);
+			if (!string.IsNullOrWhiteSpace(BroadcastAddress)) {
+				try {
+					endPoint = new IPEndPoint(newBroadcast, serverBroadcastListenPort);
+				} catch (Exception ex) {
+					Debug.LogException(ex);
+				}
+			}
 
-                    ArraySegment<byte> data = writer.ToArraySegment();
+			using (NetworkWriterPooled writer = NetworkWriterPool.Get()) {
+				writer.WriteLong(secretHandshake);
 
-                    clientUdpClient.SendAsync(data.Array, data.Count, endPoint);
-                }
-                catch (Exception)
-                {
-                    // It is ok if we can't broadcast to one of the addresses
-                }
-            }
-        }
+				try {
+					Request request = GetRequest();
 
-        /// <summary>
-        /// Create a message that will be broadcasted on the network to discover servers
-        /// </summary>
-        /// <remarks>
-        /// Override if you wish to include additional data in the discovery message
-        /// such as desired game mode, language, difficulty, etc... </remarks>
-        /// <returns>An instance of ServerRequest with data to be broadcasted</returns>
-        protected virtual Request GetRequest() => default;
+					writer.Write(request);
 
-        async Task ReceiveGameBroadcastAsync(UdpClient udpClient)
-        {
-            // only proceed if there is available data in network buffer, or otherwise Receive() will block
-            // average time for UdpClient.Available : 10 us
+					ArraySegment<byte> data = writer.ToArraySegment();
 
-            UdpReceiveResult udpReceiveResult = await udpClient.ReceiveAsync();
+					clientUdpClient.SendAsync(data.Array, data.Count, endPoint);
+				} catch (Exception) {
+					// It is ok if we can't broadcast to one of the addresses
+				}
+			}
+		}
 
-            using (NetworkReaderPooled networkReader = NetworkReaderPool.Get(udpReceiveResult.Buffer))
-            {
-                if (networkReader.ReadLong() != secretHandshake)
-                    return;
+		/// <summary>
+		/// Create a message that will be broadcasted on the network to discover servers
+		/// </summary>
+		/// <remarks>
+		/// Override if you wish to include additional data in the discovery message
+		/// such as desired game mode, language, difficulty, etc... </remarks>
+		/// <returns>An instance of ServerRequest with data to be broadcasted</returns>
+		protected virtual Request GetRequest() => default;
 
-                Response response = networkReader.Read<Response>();
+		async Task ReceiveGameBroadcastAsync(UdpClient udpClient) {
+			// only proceed if there is available data in network buffer, or otherwise Receive() will block
+			// average time for UdpClient.Available : 10 us
 
-                ProcessResponse(response, udpReceiveResult.RemoteEndPoint);
-            }
-        }
+			UdpReceiveResult udpReceiveResult = await udpClient.ReceiveAsync();
 
-        /// <summary>
-        /// Process the answer from a server
-        /// </summary>
-        /// <remarks>
-        /// A client receives a reply from a server, this method processes the
-        /// reply and raises an event
-        /// </remarks>
-        /// <param name="response">Response that came from the server</param>
-        /// <param name="endpoint">Address of the server that replied</param>
-        protected abstract void ProcessResponse(Response response, IPEndPoint endpoint);
+			using (NetworkReaderPooled networkReader = NetworkReaderPool.Get(udpReceiveResult.Buffer)) {
+				if (networkReader.ReadLong() != secretHandshake)
+					return;
 
-        #endregion
-    }
+				Response response = networkReader.Read<Response>();
+
+				ProcessResponse(response, udpReceiveResult.RemoteEndPoint);
+			}
+		}
+
+		/// <summary>
+		/// Process the answer from a server
+		/// </summary>
+		/// <remarks>
+		/// A client receives a reply from a server, this method processes the
+		/// reply and raises an event
+		/// </remarks>
+		/// <param name="response">Response that came from the server</param>
+		/// <param name="endpoint">Address of the server that replied</param>
+		protected abstract void ProcessResponse(Response response, IPEndPoint endpoint);
+
+		#endregion
+	}
 }

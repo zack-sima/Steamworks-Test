@@ -1,3 +1,7 @@
+#if !(UNITY_STANDALONE_WIN || UNITY_STANDALONE_LINUX || UNITY_STANDALONE_OSX || STEAMWORKS_WIN || STEAMWORKS_LIN_OSX)
+#define DISABLESTEAMWORKS
+#endif
+#if !DISABLESTEAMWORKS
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -73,3 +77,4 @@ public class SteamLobby : MonoBehaviour {
 		manager.StartClient();
 	}
 }
+#endif
